@@ -1,5 +1,6 @@
 import { Router, type Request } from "express";
 import { pool } from "../db.js";
+import { saveFilters, loadFilters } from "../storage/filterStore.js";
 
 const router = Router();
 
@@ -39,8 +40,9 @@ function buildParcelFilters(req: Request, isAuthenticated: boolean) {
 
 router.get("/", async (req, res) => {
     try {
+        const userKey = (req.headers.authorization || req.ip) as string;
         const isAuthenticated = Boolean(req.headers.authorization);
-        console.log(`Parcels request by ${isAuthenticated ? "AUTHENTICATED" : "GUEST"} user`);
+        console.log(`Parcels request by ${isAuthenticated ? "AUTHENTICATED" : "GUEST"} user (${userKey})`);
 
         const { whereClause, params } = buildParcelFilters(req, isAuthenticated);
 
@@ -54,6 +56,8 @@ router.get("/", async (req, res) => {
 
         const { rows } = await pool.query(query, params);
 
+        saveFilters(userKey, req.query);
+
         const formatted = rows.map(row => ({
             ...row,
             geometry: row.geometry ? JSON.parse(row.geometry) : null
@@ -63,6 +67,17 @@ router.get("/", async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+router.get("/filters", (req, res) => {
+    try {
+        const userKey = (req.headers.authorization || req.ip) as string;
+        const filters = loadFilters(userKey);
+        res.json(filters);
+    } catch (err) {
+        console.error("Error loading filters:", err);
+        res.status(500).json({ error: "Failed to load filters" });
     }
 });
 
