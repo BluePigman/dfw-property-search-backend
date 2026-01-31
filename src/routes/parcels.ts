@@ -28,12 +28,12 @@ router.get("/", async (req, res) => {
         }
 
         if (minPrice !== undefined) {
-            conditions.push(`total_value >= $${paramIndex++}`);
+            conditions.push(`(total_value)::numeric >= $${paramIndex++}`);
             params.push(Number(minPrice));
         }
 
         if (maxPrice !== undefined) {
-            conditions.push(`total_value <= $${paramIndex++}`);
+            conditions.push(`(total_value)::numeric <= $${paramIndex++}`);
             params.push(Number(maxPrice));
         }
 
