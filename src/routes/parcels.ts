@@ -5,7 +5,7 @@ import { saveFilters, loadFilters } from "../storage/filterStore.js";
 const router = Router();
 
 function buildParcelFilters(req: Request, isAuthenticated: boolean) {
-    const { minPrice, maxPrice, minSqft, maxSqft } = req.query;
+    const { minPrice, maxPrice, minSqft, maxSqft, west, east, south, north } = req.query;
     const conditions: string[] = [];
     const params: (string | number)[] = [];
     let paramIndex = 1;
@@ -34,6 +34,11 @@ function buildParcelFilters(req: Request, isAuthenticated: boolean) {
         params.push(Number(maxSqft));
     }
 
+    if (west !== undefined && east !== undefined && south !== undefined && north !== undefined) {
+        conditions.push(`public.ST_Intersects(geom, public.ST_MakeEnvelope($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 4326))`);
+        params.push(Number(west), Number(south), Number(east), Number(north));
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     return { whereClause, params };
 }
@@ -56,7 +61,8 @@ router.get("/", async (req, res) => {
 
         const { rows } = await pool.query(query, params);
 
-        saveFilters(userKey, req.query);
+        const { west: _w, east: _e, south: _s, north: _n, ...otherFilters } = req.query;
+        saveFilters(userKey, otherFilters);
 
         const formatted = rows.map(row => ({
             ...row,
