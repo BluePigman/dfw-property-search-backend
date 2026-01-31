@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { pool } from "./db.js";
+import parcelsRouter from "./routes/parcels.js";
 import inspectRouter from "./routes/inspect.js";
 
 const app = express();
@@ -8,6 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use("/inspect", inspectRouter);
+app.use("/parcels", parcelsRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
