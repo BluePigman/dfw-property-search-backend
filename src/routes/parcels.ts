@@ -14,18 +14,50 @@ router.get("/", async (req, res) => {
             console.log("Parcels request by GUEST user");
         }
 
-        const query = isAuthenticated
-            ? `SELECT sl_uuid, address, county, sqft, total_value,
-                 public.ST_AsGeoJSON(geom) AS geometry
-         FROM takehome.dallas_parcels
-         LIMIT 50`
-            : `SELECT sl_uuid, address, county, sqft, total_value,
-                 public.ST_AsGeoJSON(geom) AS geometry
-         FROM takehome.dallas_parcels
-         WHERE county = 'dallas'
-         LIMIT 50`;
+        // Extract filter query parameters
+        const { minPrice, maxPrice, minSqft, maxSqft } = req.query;
 
-        const { rows } = await pool.query(query);
+        // Build dynamic WHERE conditions
+        const conditions: string[] = [];
+        const params: (string | number)[] = [];
+        let paramIndex = 1;
+
+        // Guest users are restricted to Dallas county
+        if (!isAuthenticated) {
+            conditions.push(`county = 'dallas'`);
+        }
+
+        if (minPrice !== undefined) {
+            conditions.push(`total_value >= $${paramIndex++}`);
+            params.push(Number(minPrice));
+        }
+
+        if (maxPrice !== undefined) {
+            conditions.push(`total_value <= $${paramIndex++}`);
+            params.push(Number(maxPrice));
+        }
+
+        if (minSqft !== undefined) {
+            conditions.push(`sqft >= $${paramIndex++}`);
+            params.push(Number(minSqft));
+        }
+
+        if (maxSqft !== undefined) {
+            conditions.push(`sqft <= $${paramIndex++}`);
+            params.push(Number(maxSqft));
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+        const query = `
+            SELECT sl_uuid, address, county, sqft, total_value,
+                   public.ST_AsGeoJSON(geom) AS geometry
+            FROM takehome.dallas_parcels
+            ${whereClause}
+            LIMIT 50
+        `;
+
+        const { rows } = await pool.query(query, params);
 
         const formatted = rows.map(row => ({
             ...row,
