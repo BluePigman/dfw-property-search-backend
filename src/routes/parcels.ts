@@ -70,8 +70,8 @@ router.get("/", async (req, res) => {
 
         const { whereClause, params } = buildParcelFilters(req, isAuthenticated);
 
-        // Authenticated users get 3000 rows, guests get 500
-        const limit = isAuthenticated ? 3000 : 500;
+        // Authenticated users get 1000 rows, guests get 500
+        const limit = isAuthenticated ? 1000 : 500;
 
         const query = `
             SELECT sl_uuid, address, county, sqft, total_value,
@@ -117,6 +117,16 @@ router.get("/export", async (req, res) => {
 
         const { whereClause, params } = buildParcelFilters(req, isAuthenticated);
 
+        // Limit export to 10,000 rows to prevent heap memory exhaustion on Render
+        const query = `
+            SELECT sl_uuid, address, county, sqft, total_value
+            FROM takehome.dallas_parcels
+            ${whereClause}
+            LIMIT 10000
+        `;
+
+        const { rows } = await pool.query(query, params);
+
         res.setHeader("Content-Type", "text/csv");
         res.setHeader("Content-Disposition", "attachment; filename=parcels.csv");
 
@@ -124,45 +134,17 @@ router.get("/export", async (req, res) => {
         const header = ["sl_uuid", "address", "county", "sqft", "total_value"];
         res.write(header.join(",") + "\n");
 
-        // Batch streaming to handle unlimited rows within Render's memory limits
-        let lastId = "";
-        let hasMore = true;
-        const BATCH_SIZE = 1000;
-
-        while (hasMore) {
-            // Using keyset pagination (WHERE sl_uuid > lastId) for maximum performance
-            const batchQuery = `
-                SELECT sl_uuid, address, county, sqft, total_value
-                FROM takehome.dallas_parcels
-                ${whereClause} 
-                ${whereClause ? 'AND' : 'WHERE'} sl_uuid > $${params.length + 1}
-                ORDER BY sl_uuid ASC
-                LIMIT ${BATCH_SIZE}
-            `;
-
-            const { rows } = await pool.query(batchQuery, [...params, lastId]);
-
-            if (rows.length === 0) {
-                hasMore = false;
-                break;
-            }
-
-            for (const row of rows) {
-                const csvLine = header.map(field => {
-                    const value = (row as any)[field];
-                    if (value === null || value === undefined) return "";
-                    const strValue = String(value).replace(/"/g, '""');
-                    return strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')
-                        ? `"${strValue}"`
-                        : strValue;
-                }).join(",");
-                res.write(csvLine + "\n");
-            }
-
-            lastId = rows[rows.length - 1].sl_uuid;
-            if (rows.length < BATCH_SIZE) {
-                hasMore = false;
-            }
+        // Stream rows to avoid creating a massive in-memory string
+        for (const row of rows) {
+            const csvLine = header.map(field => {
+                const value = (row as any)[field];
+                if (value === null || value === undefined) return "";
+                const strValue = String(value).replace(/"/g, '""');
+                return strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')
+                    ? `"${strValue}"`
+                    : strValue;
+            }).join(",");
+            res.write(csvLine + "\n");
         }
 
         res.end();
@@ -171,8 +153,6 @@ router.get("/export", async (req, res) => {
         if (!res.headersSent) {
             res.status(500).json({ error: "Failed to export CSV" });
         } else {
-            // If we already sent headers, we can't send a 500. 
-            // The browser will just see a truncated file.
             res.end();
         }
     }
