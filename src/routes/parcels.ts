@@ -56,7 +56,8 @@ router.get("/", async (req, res) => {
                    public.ST_AsGeoJSON(geom) AS geometry
             FROM takehome.dallas_parcels
             ${whereClause}
-            LIMIT 500
+            ORDER BY sl_uuid
+            LIMIT 250
         `;
 
         const { rows } = await pool.query(query, params);
