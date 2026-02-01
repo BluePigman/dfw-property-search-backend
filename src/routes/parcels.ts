@@ -57,7 +57,7 @@ router.get("/", async (req, res) => {
             FROM takehome.dallas_parcels
             ${whereClause}
             ORDER BY sl_uuid
-            LIMIT 250
+            LIMIT 100
         `;
 
         const { rows } = await pool.query(query, params);
