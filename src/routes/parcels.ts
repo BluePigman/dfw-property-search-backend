@@ -35,13 +35,18 @@ function buildParcelFilters(req: Request, isAuthenticated: boolean) {
         params.push(Number(maxSqft));
     }
 
+    let orderBy = "sl_uuid";
     if (west !== undefined && east !== undefined && south !== undefined && north !== undefined) {
         conditions.push(`public.ST_Intersects(geom, public.ST_MakeEnvelope($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++}, 4326))`);
         params.push(Number(west), Number(south), Number(east), Number(north));
+
+        const centerX = (Number(west) + Number(east)) / 2;
+        const centerY = (Number(south) + Number(north)) / 2;
+        orderBy = `geom <-> public.ST_SetSRID(public.ST_MakePoint(${centerX}, ${centerY}), 4326)`;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    return { whereClause, params };
+    return { whereClause, params, orderBy };
 }
 
 function getUserKey(req: Request): string {
@@ -68,7 +73,7 @@ router.get("/", async (req, res) => {
         const isAuthenticated = Boolean(req.headers.authorization);
         console.log(`Parcels request by ${isAuthenticated ? "AUTHENTICATED" : "GUEST"} user (${userKey})`);
 
-        const { whereClause, params } = buildParcelFilters(req, isAuthenticated);
+        const { whereClause, params, orderBy } = buildParcelFilters(req, isAuthenticated);
 
         // Authenticated users get 1000 rows, guests get 500
         const limit = isAuthenticated ? 1000 : 500;
@@ -78,7 +83,7 @@ router.get("/", async (req, res) => {
                    public.ST_AsGeoJSON(geom, 6) AS geometry
             FROM takehome.dallas_parcels
             ${whereClause}
-            ORDER BY sl_uuid
+            ORDER BY ${orderBy}
             LIMIT ${limit}
         `;
 
