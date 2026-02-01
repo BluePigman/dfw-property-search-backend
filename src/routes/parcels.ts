@@ -42,7 +42,7 @@ function buildParcelFilters(req: Request, isAuthenticated: boolean) {
 
         const centerX = (Number(west) + Number(east)) / 2;
         const centerY = (Number(south) + Number(north)) / 2;
-        orderBy = `geom <-> public.ST_SetSRID(public.ST_MakePoint(${centerX}, ${centerY}), 4326)`;
+        orderBy = `public.ST_Distance(geom, public.ST_SetSRID(public.ST_MakePoint(${centerX}, ${centerY}), 4326)) ASC`;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
