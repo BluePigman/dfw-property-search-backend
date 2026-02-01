@@ -72,7 +72,7 @@ router.get("/", async (req, res) => {
 
         const query = `
             SELECT sl_uuid, address, county, sqft, total_value,
-                   public.ST_AsGeoJSON(geom) AS geometry
+                   public.ST_AsGeoJSON(geom, 6) AS geometry
             FROM takehome.dallas_parcels
             ${whereClause}
             ORDER BY sl_uuid
@@ -118,29 +118,37 @@ router.get("/export", async (req, res) => {
             SELECT sl_uuid, address, county, sqft, total_value
             FROM takehome.dallas_parcels
             ${whereClause}
+            LIMIT 10000
         `;
 
         const { rows } = await pool.query(query, params);
 
-        // Build CSV
-        const header = ["sl_uuid", "address", "county", "sqft", "total_value"];
-        const csvRows = [
-            header.join(","),
-            ...rows.map(row =>
-                header.map(field => {
-                    const value = row[field];
-                    if (value === null || value === undefined) return "";
-                    return `"${String(value).replace(/"/g, '""')}"`;
-                }).join(",")
-            )
-        ];
-
         res.setHeader("Content-Type", "text/csv");
         res.setHeader("Content-Disposition", "attachment; filename=parcels.csv");
-        res.send(csvRows.join("\n"));
+
+        // Write header
+        const header = ["sl_uuid", "address", "county", "sqft", "total_value"];
+        res.write(header.join(",") + "\n");
+
+        // Stream rows to avoid creating a massive in-memory string
+        for (const row of rows) {
+            const csvLine = header.map(field => {
+                const value = (row as any)[field];
+                if (value === null || value === undefined) return "";
+                const strValue = String(value).replace(/"/g, '""');
+                return strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')
+                    ? `"${strValue}"`
+                    : strValue;
+            }).join(",");
+            res.write(csvLine + "\n");
+        }
+
+        res.end();
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Failed to export CSV" });
+        if (!res.headersSent) {
+            res.status(500).json({ error: "Failed to export CSV" });
+        }
     }
 });
 
