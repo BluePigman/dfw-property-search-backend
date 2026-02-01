@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 import { saveFilters, loadFilters } from "../storage/filterStore.js";
 
@@ -43,9 +44,27 @@ function buildParcelFilters(req: Request, isAuthenticated: boolean) {
     return { whereClause, params };
 }
 
+function getUserKey(req: Request): string {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.substring(7);
+        try {
+            const decoded = jwt.decode(token);
+            if (decoded && typeof decoded === "object") {
+                const userId = decoded.sub || decoded.id || decoded.userId || decoded.user_id;
+                if (userId) return String(userId);
+            }
+        } catch (err) {
+            console.error("Error decoding token:", err);
+        }
+        return authHeader;
+    }
+    return req.ip || "anonymous";
+}
+
 router.get("/", async (req, res) => {
     try {
-        const userKey = (req.headers.authorization || req.ip) as string;
+        const userKey = getUserKey(req);
         const isAuthenticated = Boolean(req.headers.authorization);
         console.log(`Parcels request by ${isAuthenticated ? "AUTHENTICATED" : "GUEST"} user (${userKey})`);
 
@@ -79,7 +98,7 @@ router.get("/", async (req, res) => {
 
 router.get("/filters", (req, res) => {
     try {
-        const userKey = (req.headers.authorization || req.ip) as string;
+        const userKey = getUserKey(req);
         const filters = loadFilters(userKey);
         res.json(filters);
     } catch (err) {
